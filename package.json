@@ -1,0 +1,28 @@
+{
+  "name": "background-cache",
+  "version": "0.0.1",
+  "description": "request content to make in-memory-cache and udpate it periodically. Check redis on startup if there was any old content",
+  "main": "cache.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/krzychukula/background-cache.git"
+  },
+  "keywords": [
+    "util",
+    "redis",
+    "cache"
+  ],
+  "author": "Krzysztof Kula",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/krzychukula/background-cache/issues"
+  },
+  "homepage": "https://github.com/krzychukula/background-cache",
+  "dependencies": {
+    "request": "^2.34.0",
+    "redis": "^0.10.1"
+  }
+}
