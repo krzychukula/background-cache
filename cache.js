@@ -7,7 +7,7 @@ var cacheStore = {
 
 }
 
-var redisHashName = "responseCache"
+var redisHashName = "responseCache";
 var defaultTimeToLive = 40 * 1000; // 40sec
 
 //when application starts get contents of cache from redis
@@ -36,14 +36,27 @@ function parseJson(data){
     return JSON.parse(data);
 }
 
+function resolveRequest(request) {
+    if (typeof request == 'function') {
+        return request();
+    } else {
+        return request;
+    }
+}
+
 exports.resource = function(requestOptions, handler, timeToLive){
     timeToLive = timeToLive || defaultTimeToLive;
     handler = handler || parseJson;
-    var keyPart = requestOptions.url ? requestOptions.url : requestOptions;
+
+    var requestData = resolveRequest(requestOptions);
+    var keyPart = requestData.url ? requestData.url : requestData;
     var key = JSON.stringify(keyPart);
 
     function updateCachedEntry(){
-        request.get(requestOptions, function (err, response, responseBody) {
+        // resolve request here on each update to ensure that if a
+        // generator function was passed the request is regenerated each time
+        var req = resolveRequest(requestOptions);
+        request.get(req, function (err, response, responseBody) {
             if (!err && response.statusCode == 200) {
                 try{
                     // cache the body of the response
@@ -58,7 +71,7 @@ exports.resource = function(requestOptions, handler, timeToLive){
                     console.error("Can't update CACHE: ", key, " due to", e);
                 }
             } else {
-                console.error('error: cache ', JSON.stringify(requestOptions), err);
+                console.error('error: cache ', JSON.stringify(req), err);
             }
         });
     }
