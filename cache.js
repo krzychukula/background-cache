@@ -7,10 +7,11 @@ var cacheStore = {
 
 }
 
+var redisHashName = "responseCache"
 var defaultTimeToLive = 40 * 1000; // 40sec
 
 //when application starts get contents of cache from redis
-client.hgetall("cache", function (err, obj) {
+client.hgetall(redisHashName, function (err, obj) {
     if(err){
         console.log('empty redis cache');
         return;
@@ -51,7 +52,7 @@ exports.resource = function(requestOptions, handler, timeToLive){
                         expires: now() + timeToLive
                     };
                     if(client.connected){
-                        client.hmset("cache", key, JSON.stringify(cacheStore[key].cached));
+                        client.hmset(redisHashName, key, JSON.stringify(cacheStore[key].cached));
                     }
                 }catch(e){
                     console.error("Can't update CACHE: ", key, " due to", e);
