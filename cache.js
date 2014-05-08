@@ -7,8 +7,11 @@ var cacheStore = {
 
 }
 
+var redisHashName = "responseCache";
+var defaultTimeToLive = 40 * 1000; // 40sec
+
 //when application starts get contents of cache from redis
-client.hgetall("cache", function (err, obj) {
+client.hgetall(redisHashName, function (err, obj) {
     if(err){
         console.log('empty redis cache');
         return;
@@ -19,61 +22,92 @@ client.hgetall("cache", function (err, obj) {
             // prop is not inherited
             console.log('loading key from redis');
             cacheStore[key] = {
-                parsed: JSON.parse(obj[key])
+                cached: JSON.parse(obj[key])
             }
         }
    }
 });
 
+function now() {
+    return (new Date()).getTime();
+}
+
 function parseJson(data){
     return JSON.parse(data);
 }
 
-exports.resource = function(requestOptions, handler, time){
-    time = time || (1000 * 40);//1000 = 1s
-    handler = handler || parseJson;
-    var keyPart = requestOptions.url ? requestOptions.url : requestOptions;
-    var key = JSON.stringify(keyPart)+handler+time;
-
-    var existing = cacheStore[key]
-    if(existing && existing.promised){
-        return existing.promised;
-    }else if(existing && !existing.promise){
-        //just go and set update function but do not reset cacheStore[key]
+function resolveRequest(request) {
+    if (typeof request == 'function') {
+        return request();
     } else {
-        cacheStore[key] = {
-            parsed: ''
-        };
+        return request;
     }
+}
 
+exports.resource = function(requestOptions, handler, timeToLive){
+    timeToLive = timeToLive || defaultTimeToLive;
+    handler = handler || parseJson;
 
-    function update(){
-        request.get(requestOptions, function (err, response, responseBody) {
+    var requestData = resolveRequest(requestOptions);
+    var keyPart = requestData.url ? requestData.url : requestData;
+    var key = JSON.stringify(keyPart);
+    var handlerKey = handler.toString();
+
+    function updateCachedEntry(){
+        // resolve request here on each update to ensure that if a
+        // generator function was passed the request is regenerated each time
+        var req = resolveRequest(requestOptions);
+        request.get(req, function (err, response, responseBody) {
             if (!err && response.statusCode == 200) {
                 try{
-                    var parsed = handler(responseBody);
-                    cacheStore[key].parsed = parsed;
+                    // cache the body of the response
+                    cacheStore[key].cached = {
+                        responseBody: responseBody,
+                        timestamp: now()
+                    };
                     if(client.connected){
-                        client.hmset("cache", key, JSON.stringify(cacheStore[key].parsed));
+                        client.hmset(redisHashName, key, JSON.stringify(cacheStore[key].cached));
                     }
                 }catch(e){
                     console.error("Can't update CACHE: ", key, " due to", e);
                 }
             } else {
-                console.error('error: cache ', JSON.stringify(requestOptions), err);
+                console.error('error: cache ', JSON.stringify(req), err);
             }
         });
-        setTimeout(update, time);
     }
 
-    process.nextTick(update);
+    var existing = cacheStore[key];
+    if(existing && existing.promised[handlerKey]){
+        return existing.promised[handlerKey];
+    }else if(existing){
+        // always use the lowest requested time-to-live for a given URL
+        if (timeToLive < existing.ttl)
+            existing.ttl = timeToLive;
+    } else {
+        cacheStore[key] = {
+            promised: {},
+            ttl: timeToLive
+        };
+        updateCachedEntry(); // implicit update to get the first cached value
+    }
 
-    cacheStore[key].promised = {
+    cacheStore[key].promised[handlerKey] = {
         get: function(){
-            return cacheStore[key].parsed;
+            var entry = cacheStore[key];
+            if (entry.cached) {
+                var expiryTime = entry.cached.timestamp + entry.ttl;
+                if (now() > expiryTime) {
+                    updateCachedEntry();
+                }
+
+                return handler(entry.cached.responseBody);
+            } else {
+                return '';
+            }
         }
-    }
+    };
 
-    return cacheStore[key].promised;
+    return cacheStore[key].promised[handlerKey];
 
-}
+};
