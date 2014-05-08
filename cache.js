@@ -51,6 +51,7 @@ exports.resource = function(requestOptions, handler, timeToLive){
     var requestData = resolveRequest(requestOptions);
     var keyPart = requestData.url ? requestData.url : requestData;
     var key = JSON.stringify(keyPart);
+    var handlerKey = handler.toString();
 
     function updateCachedEntry(){
         // resolve request here on each update to ensure that if a
@@ -62,7 +63,7 @@ exports.resource = function(requestOptions, handler, timeToLive){
                     // cache the body of the response
                     cacheStore[key].cached = {
                         responseBody: responseBody,
-                        expires: now() + timeToLive
+                        timestamp: now()
                     };
                     if(client.connected){
                         client.hmset(redisHashName, key, JSON.stringify(cacheStore[key].cached));
@@ -77,21 +78,26 @@ exports.resource = function(requestOptions, handler, timeToLive){
     }
 
     var existing = cacheStore[key];
-    if(existing && existing.promised){
-        return existing.promised;
+    if(existing && existing.promised[handlerKey]){
+        return existing.promised[handlerKey];
     }else if(existing){
-        //just go and set update function but do not reset cacheStore[key]
+        // always use the lowest requested time-to-live for a given URL
+        if (timeToLive < existing.ttl)
+            existing.ttl = timeToLive;
     } else {
-        cacheStore[key] = {};
+        cacheStore[key] = {
+            promised: {},
+            ttl: timeToLive
+        };
         updateCachedEntry(); // implicit update to get the first cached value
     }
 
-    cacheStore[key].promised = {
+    cacheStore[key].promised[handlerKey] = {
         get: function(){
             var entry = cacheStore[key];
             if (entry.cached) {
-                var timeToRefresh = now() >= entry.cached.expires;
-                if (timeToRefresh) {
+                var expiryTime = entry.cached.timestamp + entry.ttl;
+                if (now() > expiryTime) {
                     updateCachedEntry();
                 }
 
@@ -102,6 +108,6 @@ exports.resource = function(requestOptions, handler, timeToLive){
         }
     };
 
-    return cacheStore[key].promised;
+    return cacheStore[key].promised[handlerKey];
 
 };
