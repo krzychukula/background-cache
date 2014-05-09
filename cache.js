@@ -25,6 +25,14 @@ client.hgetall("cache", function (err, obj) {
    }
 });
 
+function resolveRequest(request) {
+    if (typeof request == 'function') {
+        return request();
+    } else {
+        return request;
+    }
+}
+
 function parseJson(data){
     return JSON.parse(data);
 }
@@ -32,10 +40,12 @@ function parseJson(data){
 exports.resource = function(requestOptions, handler, time){
     time = time || (1000 * 40);//1000 = 1s
     handler = handler || parseJson;
-    var keyPart = requestOptions.url ? requestOptions.url : requestOptions;
+
+    var requestData = resolveRequest(requestOptions);
+    var keyPart = requestData.url ? requestData.url : requestData;
     var key = JSON.stringify(keyPart)+handler+time;
 
-    var existing = cacheStore[key]
+    var existing = cacheStore[key];
     if(existing && existing.promised){
         return existing.promised;
     }else if(existing && !existing.promise){
@@ -48,7 +58,9 @@ exports.resource = function(requestOptions, handler, time){
 
 
     function update(){
-        request.get(requestOptions, function (err, response, responseBody) {
+        // resolve request data on each update\
+        var requestData = resolveRequest(requestOptions);
+        request.get(requestData, function (err, response, responseBody) {
             if (!err && response.statusCode == 200) {
                 try{
                     var parsed = handler(responseBody);
@@ -60,7 +72,7 @@ exports.resource = function(requestOptions, handler, time){
                     console.error("Can't update CACHE: ", key, " due to", e);
                 }
             } else {
-                console.error('error: cache ', JSON.stringify(requestOptions), err);
+                console.error('error: cache ', JSON.stringify(requestData), err);
             }
         });
         setTimeout(update, time);
