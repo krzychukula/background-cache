@@ -38,7 +38,7 @@ function parseJson(data){
 }
 
 exports.resource = function(requestOptions, handler, time){
-    time = time || (1000 * 40);//1000 = 1s
+    time = time || (1000 * 15);//1000 = 1s
     handler = handler || parseJson;
 
     var requestData = resolveRequest(requestOptions);
