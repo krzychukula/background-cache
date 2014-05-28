@@ -1,6 +1,6 @@
 {
   "name": "background-cache",
-  "version": "0.0.2",
+  "version": "1.0.0",
   "description": "request content to make in-memory-cache and udpate it periodically. Check redis on startup if there was any old content",
   "main": "cache.js",
   "scripts": {
